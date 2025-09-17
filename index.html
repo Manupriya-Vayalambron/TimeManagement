@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prioritization Workshop</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styles for Inter font and general body */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f4f8; /* Light blue-gray background */
+            color: #334155; /* Darker text color */
+            display: flex;
+            justify-content: center;
+            align-items: flex-start; /* Align to top to allow scrolling */
+            min-height: 100vh; /* Minimum height for full viewport */
+            padding: 2rem; /* Padding around the content */
+            box-sizing: border-box; /* Include padding in element's total width and height */
+        }
+
+        /* Styling for draggable items */
+        .task-item {
+            transition: transform 0.2s ease-in-out, background-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+            border: 1px solid #e2e8f0; /* Light border */
+            touch-action: none; /* Prevent default touch actions like scrolling/zooming */
+        }
+
+        .task-item:hover {
+            transform: translateY(-2px); /* Slight lift on hover */
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); /* Subtle shadow on hover */
+        }
+
+        .task-item.dragging {
+            opacity: 0.8; /* Slightly transparent when dragging */
+            border: 2px dashed #60a5fa; /* Blue dashed border when dragging */
+            background-color: #bfdbfe; /* Lighter blue background when dragging */
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2); /* More prominent shadow when dragging */
+            z-index: 1000; /* Ensure it's on top */
+            cursor: grabbing; /* Indicate grabbing */
+        }
+
+        /* Styling for the task list container */
+        #task-list {
+            min-height: 300px; /* Ensure enough height for drag and drop */
+            border: 2px dashed #cbd5e1; /* Dashed border for the drop zone */
+            background-color: #f8fafc; /* Very light background for the list */
+            position: relative; /* Essential for absolute positioning of dragged item */
+        }
+
+        /* Placeholder for touch drag-and-drop */
+        .task-placeholder {
+            background-color: #e0f2fe; /* Light blue */
+            border: 2px dashed #90cdf4; /* Blue dashed border */
+            height: 60px; /* Default height, will be adjusted by JS */
+            margin-bottom: 0.75rem; /* Match gap-3 */
+            border-radius: 0.5rem;
+            transition: all 0.2s ease-in-out;
+        }
+
+        /* Styling for buttons */
+        .btn {
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.5rem;
+            font-weight: 600;
+            transition: background-color 0.2s ease-in-out, transform 0.1s ease-in-out;
+        }
+
+        .btn-primary {
+            background-color: #3b82f6; /* Blue */
+            color: white;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .btn-primary:hover {
+            background-color: #2563eb; /* Darker blue on hover */
+            transform: translateY(-1px);
+        }
+
+        .btn-primary:active {
+            transform: translateY(0);
+            box-shadow: none;
+        }
+
+        /* Message box styling */
+        .message-box {
+            background-color: #ecfdf5; /* Light green for success */
+            border: 1px solid #a7f3d0; /* Green border */
+            color: #065f46; /* Dark green text */
+            padding: 1rem;
+            border-radius: 0.5rem;
+            margin-top: 1rem;
+            font-weight: 500;
+            text-align: center;
+        }
+    </style>
+</head>
+<body class="antialiased">
+    <div class="max-w-3xl w-full bg-white p-8 rounded-xl shadow-2xl space-y-6">
+        <h1 class="text-4xl font-extrabold text-center text-gray-900 mb-4">Time Management Workshop: Prioritization</h1>
+
+        <p class="text-lg text-center text-gray-700 mb-6">
+            Welcome to the prioritization challenge! Below is a list of 10 activities that need to be done today.
+            Your task is to drag and drop them into the order you believe is most effective,
+            placing the most important tasks at the top.
+        </p>
+
+        <div class="bg-blue-50 p-6 rounded-lg shadow-inner mb-6">
+            <h2 class="text-2xl font-bold text-blue-800 mb-3 text-center">Your Daily Tasks</h2>
+            <p class="text-md text-blue-700 text-center mb-4">Drag and drop to reorder:</p>
+            <div id="task-list" class="flex flex-col gap-3 p-4 bg-gray-100 rounded-lg shadow-inner">
+                <!-- Tasks will be dynamically loaded here by JavaScript -->
+            </div>
+        </div>
+
+        <div class="flex justify-center mt-8">
+            <button id="submit-btn" class="btn btn-primary">
+                Submit Prioritization
+            </button>
+        </div>
+
+        <div id="score-display" class="message-box hidden">
+            <!-- Score will be displayed here -->
+        </div>
+    </div>
+
+    <script>
+        // Define the activities with their hidden importance scores
+        const activitiesData = [
+            { id: 'study-exam', name: 'Study for tomorrow\'s exam', importance: 10 },
+            { id: 'attend-lecture', name: 'Attend online lecture', importance: 9 },
+            { id: 'complete-project', name: 'Complete urgent project (due today)', importance: 9 },
+            { id: 'go-gym', name: 'Go to the gym', importance: 7 },
+            { id: 'prepare-dinner', name: 'Prepare dinner for the family', importance: 6 },
+            { id: 'call-family', name: 'Call family members', importance: 5 },
+            { id: 'watch-movie', name: 'Watch movie with friends', importance: 4 },
+            { id: 'clean-room', name: 'Clean your room', importance: 3 },
+            { id: 'social-media', name: 'Browse social media', importance: 2 },
+            { id: 'play-games', name: 'Play video games', importance: 1 }
+        ];
+
+        // Function to shuffle an array (Fisher-Yates algorithm)
+        function shuffleArray(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+            return array;
+        }
+
+        let draggedItem = null; // Stores the currently dragged element (for both mouse and touch)
+        let placeholder = null; // Placeholder element for touch drag-and-drop
+        let initialTouchY = 0; // Initial Y position of touch
+        let initialDraggedItemOffsetTop = 0; // Initial offset top of the dragged item relative to its parent
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const taskList = document.getElementById('task-list');
+            const submitBtn = document.getElementById('submit-btn');
+            const scoreDisplay = document.getElementById('score-display');
+
+            // Shuffle activities for initial display
+            const shuffledActivities = shuffleArray([...activitiesData]);
+
+            // Function to render tasks into the DOM
+            function renderTasks(tasks) {
+                taskList.innerHTML = ''; // Clear existing tasks
+                tasks.forEach(activity => {
+                    const taskItem = document.createElement('div');
+                    taskItem.id = `task-${activity.id}`;
+                    taskItem.draggable = true; // Still enable for desktop mouse drag
+                    taskItem.className = 'task-item bg-white p-4 rounded-lg shadow-sm cursor-grab flex items-center justify-between text-gray-800';
+                    taskItem.innerHTML = `
+                        <span class="text-lg font-medium">${activity.name}</span>
+                        <svg class="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+                        </svg>
+                    `;
+                    taskList.appendChild(taskItem);
+                });
+            }
+
+            // Initial rendering of shuffled tasks
+            renderTasks(shuffledActivities);
+
+            // --- Mouse Drag and Drop Event Listeners (Existing) ---
+
+            taskList.addEventListener('dragstart', (e) => {
+                draggedItem = e.target;
+                e.target.classList.add('dragging');
+                e.dataTransfer.setData('text/plain', e.target.id);
+                e.dataTransfer.effectAllowed = 'move';
+            });
+
+            taskList.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                const target = e.target.closest('.task-item');
+                if (target && target !== draggedItem) {
+                    Array.from(taskList.children).forEach(item => item.classList.remove('drag-over-top', 'drag-over-bottom'));
+                    const boundingBox = target.getBoundingClientRect();
+                    const offset = e.clientY - boundingBox.top;
+                    const isAbove = offset < boundingBox.height / 2;
+                    if (isAbove) {
+                        target.classList.add('drag-over-top');
+                    } else {
+                        target.classList.add('drag-over-bottom');
+                    }
+                }
+            });
+
+            taskList.addEventListener('dragleave', (e) => {
+                e.target.classList.remove('drag-over-top', 'drag-over-bottom');
+            });
+
+            taskList.addEventListener('drop', (e) => {
+                e.preventDefault();
+                const target = e.target.closest('.task-item');
+                Array.from(taskList.children).forEach(item => item.classList.remove('drag-over-top', 'drag-over-bottom'));
+
+                if (draggedItem && target && target !== draggedItem) {
+                    const boundingBox = target.getBoundingClientRect();
+                    const offset = e.clientY - boundingBox.top;
+                    const isAbove = offset < boundingBox.height / 2;
+                    if (isAbove) {
+                        taskList.insertBefore(draggedItem, target);
+                    } else {
+                        taskList.insertBefore(draggedItem, target.nextSibling);
+                    }
+                } else if (draggedItem && !target) {
+                    taskList.appendChild(draggedItem);
+                }
+            });
+
+            taskList.addEventListener('dragend', (e) => {
+                e.target.classList.remove('dragging');
+                draggedItem = null;
+                Array.from(taskList.children).forEach(item => item.classList.remove('drag-over-top', 'drag-over-bottom'));
+            });
+
+            // --- Touch Event Listeners (New for Mobile) ---
+
+            taskList.addEventListener('touchstart', (e) => {
+                // Only handle single touch for dragging
+                if (e.touches.length !== 1) return;
+
+                draggedItem = e.target.closest('.task-item');
+                if (!draggedItem) return;
+
+                e.preventDefault(); // Prevent scrolling while dragging
+
+                draggedItem.classList.add('dragging');
+                draggedItem.style.width = draggedItem.offsetWidth + 'px'; // Fix width before absolute positioning
+                draggedItem.style.position = 'absolute'; // Take out of flow
+                draggedItem.style.zIndex = '1000'; // Ensure it's on top
+
+                // Calculate initial offset relative to the taskList container
+                const taskListRect = taskList.getBoundingClientRect();
+                const draggedItemRect = draggedItem.getBoundingClientRect();
+                initialDraggedItemOffsetTop = draggedItemRect.top - taskListRect.top;
+
+                draggedItem.style.top = initialDraggedItemOffsetTop + 'px';
+                draggedItem.style.left = (draggedItemRect.left - taskListRect.left) + 'px'; // Keep its horizontal position
+
+                initialTouchY = e.touches[0].clientY;
+
+                // Create and insert placeholder
+                placeholder = document.createElement('div');
+                placeholder.className = 'task-placeholder';
+                placeholder.style.height = draggedItem.offsetHeight + 'px'; // Match dragged item's height
+                taskList.insertBefore(placeholder, draggedItem);
+            });
+
+            taskList.addEventListener('touchmove', (e) => {
+                if (!draggedItem || e.touches.length !== 1) return;
+
+                e.preventDefault(); // Prevent scrolling while dragging
+
+                const currentTouchY = e.touches[0].clientY;
+                const deltaY = currentTouchY - initialTouchY;
+
+                // Update the position of the absolutely positioned dragged item
+                draggedItem.style.top = (initialDraggedItemOffsetTop + deltaY) + 'px';
+
+                // Logic to move the placeholder
+                const draggedItemCenterY = draggedItem.offsetTop + draggedItem.offsetHeight / 2;
+
+                let newPlaceholderPosition = null;
+
+                // Iterate through all items in the list (excluding the dragged item and placeholder)
+                Array.from(taskList.children).forEach(item => {
+                    if (item === draggedItem || item === placeholder) return;
+
+                    const itemRect = item.getBoundingClientRect();
+                    const itemCenterY = item.offsetTop + item.offsetHeight / 2;
+
+                    // If dragged item's center is above this item's center
+                    if (draggedItemCenterY < itemCenterY) {
+                        // If placeholder is not already before this item, set new position
+                        if (!newPlaceholderPosition || item.offsetTop < newPlaceholderPosition.offsetTop) {
+                             newPlaceholderPosition = item;
+                        }
+                    }
+                });
+
+                // If no specific item was found to insert before, append to end
+                if (newPlaceholderPosition) {
+                    if (placeholder.nextSibling !== newPlaceholderPosition) { // Only move if not already in place
+                        taskList.insertBefore(placeholder, newPlaceholderPosition);
+                    }
+                } else {
+                    // If dragged to the bottom, append placeholder to the end
+                    if (taskList.lastChild !== placeholder) { // Only append if not already last
+                        taskList.appendChild(placeholder);
+                    }
+                }
+            });
+
+            taskList.addEventListener('touchend', () => {
+                if (!draggedItem) return;
+
+                // Remove temporary styles
+                draggedItem.classList.remove('dragging');
+                draggedItem.style.position = '';
+                draggedItem.style.top = '';
+                draggedItem.style.left = '';
+                draggedItem.style.width = '';
+                draggedItem.style.zIndex = '';
+                draggedItem.style.transform = ''; // Clear any leftover transform
+
+                // Insert the dragged item at the placeholder's position
+                if (placeholder && placeholder.parentNode === taskList) {
+                    taskList.replaceChild(draggedItem, placeholder);
+                }
+
+                // Clean up
+                placeholder = null;
+                draggedItem = null;
+            });
+
+            taskList.addEventListener('touchcancel', () => {
+                // Handle cases where touch is interrupted (e.g., call, notification)
+                if (draggedItem) {
+                    draggedItem.classList.remove('dragging');
+                    draggedItem.style.position = '';
+                    draggedItem.style.top = '';
+                    draggedItem.style.left = '';
+                    draggedItem.style.width = '';
+                    draggedItem.style.zIndex = '';
+                    draggedItem.style.transform = '';
+
+                    // Reinsert original item if placeholder exists, or just reset its position
+                    if (placeholder && placeholder.parentNode === taskList) {
+                        taskList.replaceChild(draggedItem, placeholder);
+                    }
+                }
+                placeholder = null;
+                draggedItem = null;
+            });
+
+            // --- Scoring Logic ---
+
+            // Function to calculate the user's score
+            function calculateScore() {
+                const arrangedTaskIds = Array.from(taskList.children).map(item => item.id.replace('task-', ''));
+                const numItems = arrangedTaskIds.length;
+                let userTotalScore = 0;
+
+                // Calculate user's score based on importance and position
+                arrangedTaskIds.forEach((id, index) => {
+                    const activity = activitiesData.find(act => act.id === id);
+                    if (activity) {
+                        // Score contribution: importance * (remaining positions / total positions)
+                        // This formula rewards placing more important items earlier in the list.
+                        userTotalScore += activity.importance * ((numItems - index) / numItems);
+                    }
+                });
+
+                // Calculate the maximum possible score (ideal arrangement)
+                const sortedActivities = [...activitiesData].sort((a, b) => b.importance - a.importance);
+                let maxPossibleScore = 0;
+                sortedActivities.forEach((activity, index) => {
+                    maxPossibleScore += activity.importance * ((numItems - index) / numItems);
+                });
+
+                return { userScore: userTotalScore, maxScore: maxPossibleScore };
+            }
+
+            // Event listener for the submit button
+            submitBtn.addEventListener('click', () => {
+                const { userScore, maxScore } = calculateScore();
+
+                scoreDisplay.innerHTML = `
+                    <p class="text-xl font-bold mb-2">Your Prioritization Score: <span class="text-blue-600">${userScore.toFixed(2)}</span> points</p>
+                    <p class="text-lg">Maximum Possible Score: <span class="text-green-600">${maxScore.toFixed(2)}</span> points</p>
+                    <p class="mt-4 text-md">
+                        <strong>How to improve:</strong> The closer your score is to the maximum, the better your prioritization!
+                        Try to place tasks with higher importance earlier in your list.
+                    </p>
+                `;
+                scoreDisplay.classList.remove('hidden');
+                scoreDisplay.classList.add('block'); // Show the message box
+            });
+        });
+    </script>
+</body>
+</html>
